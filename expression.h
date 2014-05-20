@@ -187,7 +187,7 @@ public:
   Concatenation(std::initializer_list<PCExpression> lComponents) : m_lComponents(lComponents.begin(), lComponents.end()) {}
 
   virtual std::string toString() const {
-    ostringstream s;
+    std::ostringstream s;
     std::for_each(m_lComponents.cbegin(), m_lComponents.cend(), [&s](PCExpression const& pe) { s << pe->toString(); });
     return s.str();
   }

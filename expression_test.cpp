@@ -1,7 +1,7 @@
 #include <iostream>
-using namespace std;
 #include "expression.h"
 
+using namespace std;
 
 void print_expression(PCExpression e) {
   for (auto p = e->front(); p != e->back(); ++p) {
