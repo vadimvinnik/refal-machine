@@ -1,3 +1,5 @@
+#include <assert.h>
+
 #include <algorithm>
 #include <initializer_list>
 #include <list>
@@ -5,7 +7,7 @@
 #include <numeric>
 #include <sstream>
 #include <string>
-#include <assert.h>
+
 #include "refcount_ptr.h"
 
 class Expression;
@@ -35,9 +37,8 @@ protected:
     bool operator==(const TermEnumeratorBase& x) const { return isEqualTo(x); }
     bool operator!=(const TermEnumeratorBase& x) const { return !isEqualTo(x); }
 
-    virtual void move(Direction direction) = 0;
-    TermEnumeratorBase& operator++() { move(LeftToRight); return *this; }
-    TermEnumeratorBase& operator--() { move(RightToLeft); return *this; }
+    virtual void toNext() = 0;
+    TermEnumeratorBase& operator++() { toNext(); return *this; }
 
     virtual PCTerm current() const = 0;
     operator PCTerm() const { return current(); }
@@ -47,18 +48,18 @@ protected:
 public:
   class TermEnumerator : public TermEnumeratorBase {
   public:
-    TermEnumerator(PTermEnumeratorBase pDelegee) : m_pDelegee(pDelegee) {}
+    TermEnumerator(PTermEnumeratorBase delegee) : m_delegee(delegee) {}
 
     virtual bool isEqualTo(const TermEnumeratorBase& x) const {
       auto xAsTermEnumerator = dynamic_cast<TermEnumerator const*>(&x);
-      return nullptr != xAsTermEnumerator && m_pDelegee->isEqualTo(*xAsTermEnumerator->m_pDelegee);
+      return nullptr != xAsTermEnumerator && m_delegee->isEqualTo(*xAsTermEnumerator->m_delegee);
     }
 
-    virtual void move(Direction direction) { m_pDelegee->move(direction); }
-    virtual PCTerm current() const { return m_pDelegee->current(); }
+    virtual void toNext() { m_delegee->toNext(); }
+    virtual PCTerm current() const { return m_delegee->current(); }
 
   private:
-    PTermEnumeratorBase m_pDelegee;
+    PTermEnumeratorBase m_delegee;
   };
 
   virtual ~Expression() {}
@@ -83,7 +84,7 @@ public:
   class EmptyEnumerator : public Expression::TermEnumeratorBase {
   public:
     virtual bool isEqualTo(const TermEnumeratorBase& x) const { return nullptr != dynamic_cast<EmptyEnumerator const*>(&x); }
-    virtual void move(Direction direction) { assert(false); }
+    virtual void toNext() { assert(false); }
     virtual PCTerm current() const { assert(false); return nullptr; }
   };
 
@@ -105,43 +106,44 @@ public:
 protected:
   class TermSelfEnumerator : public Expression::TermEnumeratorBase {
   public:
-    TermSelfEnumerator(PCTerm pTarget, bool bFinished) : m_pTarget(pTarget), m_bFinished(bFinished) {}
+    TermSelfEnumerator(PCTerm target, bool finished) : m_target(target), m_finished(finished) {}
 
     virtual bool isEqualTo(const TermEnumeratorBase& x) const {
       auto te = dynamic_cast<TermSelfEnumerator const*>(&x);
-      return nullptr != te && te->m_pTarget == m_pTarget && te->m_bFinished == m_bFinished;
+      return nullptr != te && te->m_target == m_target && te->m_finished == m_finished;
     }
 
-    virtual void move(Direction direction) {
-      static const bool bFinish[] = {true, false};
-      auto const bNewFinished = bFinish[direction];
-      assert(bNewFinished != m_bFinished);
-      m_bFinished = bNewFinished;
+    virtual void toNext() {
+      assert(!m_finished);
+      m_finished = true;
     }
 
-    virtual PCTerm current() const { return m_bFinished ? PCTerm(nullptr) : m_pTarget; }
+    virtual PCTerm current() const {
+      assert(!m_finished);
+      return m_target;
+    }
 
   private:
-    PCTerm m_pTarget;
-    bool m_bFinished;
+    PCTerm m_target;
+    bool m_finished;
   };
 
   virtual PTermEnumeratorBase frontImpl() const { return createEnumerator(false); }
   virtual PTermEnumeratorBase backImpl() const { return createEnumerator(true); }
 
 private:
-  PTermEnumeratorBase createEnumerator(bool bFinished) const {
-    return PTermEnumeratorBase(new TermSelfEnumerator(PCTerm(this), bFinished));
+  PTermEnumeratorBase createEnumerator(bool finished) const {
+    return PTermEnumeratorBase(new TermSelfEnumerator(PCTerm(this), finished));
   }
 };
 
 class Symbol : public Term {
 public:
-  Symbol(char cSymbol) : m_cSymbol(cSymbol) {}
-  virtual std::string toString() const { return std::string(1, m_cSymbol); }
+  Symbol(char symbol) : m_symbol(symbol) {}
+  virtual std::string toString() const { return std::string(1, m_symbol); }
 
 private:
-  char m_cSymbol;
+  char m_symbol;
 };
 
 class Parenthesized : public Term {
@@ -149,67 +151,62 @@ class Parenthesized : public Term {
 
 class Literal : public ExpressionNode {
 public:
-  Literal(std::string sSymbols) : m_sSymbols(sSymbols) {}
-  virtual std::string toString() const { return m_sSymbols; }
-  virtual bool isEmpty() const { return m_sSymbols.empty(); }
-  virtual int termsCount() const { return m_sSymbols.length(); }
+  Literal(std::string symbols) : m_symbols(symbols) {}
+  virtual std::string toString() const { return m_symbols; }
+  virtual bool isEmpty() const { return m_symbols.empty(); }
+  virtual int termsCount() const { return m_symbols.length(); }
 
 protected:
   class SymbolEnumerator : public ExpressionNode::TermEnumeratorBase {
   public:
-    SymbolEnumerator(std::string::const_iterator iPosition) : m_iPosition(iPosition) {}
+    SymbolEnumerator(std::string::const_iterator position) : m_position(position) {}
 
     virtual bool isEqualTo(const TermEnumeratorBase& x) const {
       auto se = dynamic_cast<SymbolEnumerator const*>(&x);
-      return nullptr != se && se->m_iPosition == m_iPosition;
+      return nullptr != se && se->m_position == m_position;
     }
 
-    virtual void move(Direction direction) {
-      static const int offsets[] = {+1, -1};
-      m_iPosition += offsets[direction];
+    virtual void toNext() {
+      ++m_position;
     }
 
-    virtual PCTerm current() const { return PCTerm(new Symbol(*m_iPosition)); }
+    virtual PCTerm current() const { return PCTerm(new Symbol(*m_position)); }
 
   private:
-    std::string::const_iterator m_iPosition;
+    std::string::const_iterator m_position;
   };
 
-  virtual PTermEnumeratorBase frontImpl() const { return PTermEnumeratorBase(new SymbolEnumerator(m_sSymbols.cbegin())); }
-  virtual PTermEnumeratorBase backImpl() const { return PTermEnumeratorBase(new SymbolEnumerator(m_sSymbols.cend())); }
+  virtual PTermEnumeratorBase frontImpl() const { return PTermEnumeratorBase(new SymbolEnumerator(m_symbols.cbegin())); }
+  virtual PTermEnumeratorBase backImpl() const { return PTermEnumeratorBase(new SymbolEnumerator(m_symbols.cend())); }
 
 private:
-  std::string m_sSymbols;
+  std::string m_symbols;
 };
 
 class Concatenation : public Expression {
 public:
-  Concatenation(std::initializer_list<PCExpression> lComponents) : m_lComponents(lComponents.begin(), lComponents.end()) {}
+  Concatenation(std::initializer_list<PCExpression> components) : m_components(components.begin(), components.end()) {}
 
   virtual std::string toString() const {
     std::ostringstream s;
-    std::for_each(m_lComponents.cbegin(), m_lComponents.cend(), [&s](PCExpression const& pe) { s << pe->toString(); });
+    std::for_each(m_components.cbegin(), m_components.cend(), [&s](PCExpression const& pe) { s << pe->toString(); });
     return s.str();
   }
 
   virtual bool isEmpty() const {
-    return std::all_of(m_lComponents.cbegin(), m_lComponents.cend(), isPtrToEmpty);
+    return std::all_of(m_components.cbegin(), m_components.cend(), isPtrToEmpty);
   }
 
 protected:
-  /*
-  Only works for non-empty concatenations of non-empty components.
-  TODO: generalize it to handle both
-  */
   class ConcatenationTermEnumerator : public TermEnumeratorBase {
   public:
     ConcatenationTermEnumerator(
-      ExpressionList::const_iterator const& iCurrentComponent,
-      ExpressionList::const_iterator const& iComponentsEnd
+      ExpressionList::const_iterator const& current_component,
+      ExpressionList::const_iterator const& components_end
     ) :
-      m_iCurrentComponent(iCurrentComponent), 
-      m_iComponentsEnd(iComponentsEnd),
-      m_iCurrentTerm(nullptr)
+      m_current_component(current_component), 
+      m_components_end(components_end),
+      m_current_cerm(nullptr)
     {
       findNextTerm();
     }
@@ -218,58 +215,54 @@ protected:
       auto te = dynamic_cast<ConcatenationTermEnumerator const*>(&x);
       return
         nullptr != te &&
-	te->m_iCurrentComponent == m_iCurrentComponent &&
-	te->m_iComponentsEnd == m_iComponentsEnd &&
+	te->m_current_component == m_current_component &&
+	te->m_components_end == m_components_end &&
 	te->isAtEnd() == isAtEnd() &&
-	(isAtEnd() || te->m_iCurrentTerm == m_iCurrentTerm);
+	(isAtEnd() || te->m_current_cerm == m_current_cerm);
     }
 
-    /*
-    for now, only works fromlefft to right.
-    TODO: reverse direction as well
-    */
-    virtual void move(Direction direction) {
+    virtual void toNext() {
       assert(!isAtEnd());
-      ++m_iCurrentTerm;
-      if (m_iCurrentTerm == (*m_iCurrentComponent)->back())
-      {
-        ++m_iCurrentComponent;
+      ++m_current_cerm;
+      if (m_current_cerm == (*m_current_component)->back()) {
+        ++m_current_component;
         findNextTerm();
       }
     }
 
-    virtual PCTerm current() const { return isAtEnd() ? PCTerm() : m_iCurrentTerm; }
+    virtual PCTerm current() const {
+      assert(!isAtEnd());
+      return m_current_cerm;
+    }
 
   private:
-    bool isAtEnd() const { return m_iCurrentComponent == m_iComponentsEnd; }
+    bool isAtEnd() const { return m_current_component == m_components_end; }
 
     void findNextTerm() {
-      m_iCurrentComponent = find_if_not(m_iCurrentComponent, m_iComponentsEnd, isPtrToEmpty);
+      m_current_component = find_if_not(m_current_component, m_components_end, isPtrToEmpty);
 
-      if (!isAtEnd())
-      {
-        m_iCurrentTerm = (*m_iCurrentComponent)->front();
+      if (!isAtEnd()) {
+        m_current_cerm = (*m_current_component)->front();
       }
     }
 
-    ExpressionList::const_iterator m_iCurrentComponent;
-    ExpressionList::const_iterator m_iComponentsEnd;
-    TermEnumerator m_iCurrentTerm;
+    ExpressionList::const_iterator m_current_component;
+    ExpressionList::const_iterator m_components_end;
+    TermEnumerator m_current_cerm;
   };
 
-  virtual PTermEnumeratorBase frontImpl() const { return PTermEnumeratorBase(new ConcatenationTermEnumerator(m_lComponents.cbegin(), m_lComponents.cend())); }
-  virtual PTermEnumeratorBase backImpl() const { return PTermEnumeratorBase(new ConcatenationTermEnumerator(m_lComponents.cend(), m_lComponents.cend())); }
+  virtual PTermEnumeratorBase frontImpl() const { return PTermEnumeratorBase(new ConcatenationTermEnumerator(m_components.cbegin(), m_components.cend())); }
+  virtual PTermEnumeratorBase backImpl() const { return PTermEnumeratorBase(new ConcatenationTermEnumerator(m_components.cend(), m_components.cend())); }
 
 private:
   static bool isPtrToEmpty(PCExpression const& pe) { return pe->isEmpty(); }
-  ExpressionList m_lComponents;
+  ExpressionList m_components;
 };
 
 class SubExpression : public Expression {
 public:
 
 private:
-  refcount_ptr<Expression> m_pTarget;
-  
+  refcount_ptr<Expression> m_target;
 };
 
