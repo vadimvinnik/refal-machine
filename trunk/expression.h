@@ -33,6 +33,7 @@ protected:
   class TermEnumeratorBase {
   public:
     virtual ~TermEnumeratorBase() {}
+
     virtual bool isEqualTo(const TermEnumeratorBase& x) const = 0;
     bool operator==(const TermEnumeratorBase& x) const { return isEqualTo(x); }
     bool operator!=(const TermEnumeratorBase& x) const { return !isEqualTo(x); }
@@ -64,7 +65,8 @@ public:
 
   virtual ~Expression() {}
   virtual std::string toString() const = 0;
-  virtual bool isEmpty() const = 0;
+  virtual bool isEmpty() const { return 0 == termsCount(); }
+  virtual int termsCount() const = 0;
   virtual TermEnumerator front() const { return TermEnumerator(frontImpl()); }
   virtual TermEnumerator back() const { return TermEnumerator(backImpl()); }
 
@@ -77,26 +79,6 @@ class ExpressionNode : public Expression {
 public:
   virtual int termsCount() const = 0;
 };
-
-/*
-class Empty : public ExpressionNode {
-public:
-  class EmptyEnumerator : public Expression::TermEnumeratorBase {
-  public:
-    virtual bool isEqualTo(const TermEnumeratorBase& x) const { return nullptr != dynamic_cast<EmptyEnumerator const*>(&x); }
-    virtual void toNext() { assert(false); }
-    virtual PCTerm current() const { assert(false); return nullptr; }
-  };
-
-  virtual std::string toString() const { return std::string(); }
-  virtual bool isEmpty() const { return true; }
-  virtual int termsCount() const { return 0; }
-
-protected:
-  virtual PTermEnumeratorBase frontImpl() const { return PTermEnumeratorBase(new EmptyEnumerator()); }
-  virtual PTermEnumeratorBase backImpl() const { return PTermEnumeratorBase(new EmptyEnumerator()); }
-};
-*/
 
 class Term : public ExpressionNode {
 public:
@@ -191,6 +173,14 @@ public:
     std::ostringstream s;
     std::for_each(m_components.cbegin(), m_components.cend(), [&s](PCExpression const& pe) { s << pe->toString(); });
     return s.str();
+  }
+
+  virtual int termsCount() const {
+    return std::accumulate(
+        m_components.cbegin(),
+        m_components.cend(),
+        0,
+        [](int s, const PCExpression& e) { return s + e->termsCount(); });
   }
 
   virtual bool isEmpty() const {
