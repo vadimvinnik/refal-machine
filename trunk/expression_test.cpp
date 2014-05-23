@@ -3,8 +3,8 @@
 
 using namespace std;
 
-void print_expression(PCExpression e) {
-  for (auto p = e->front(); p != e->back(); ++p) {
+void print_expression(PCExpression const& e, Expression::Direction direction) {
+  for (auto p = e->begin(direction); p != e->end(direction); ++p) {
     cerr << p->toString();
   }
 
@@ -16,7 +16,9 @@ int main() {
   auto b = PCExpression(new Symbol('w'));
   auto c = PCExpression(new Concatenation({a, b, a, b, a, b}));
 
-  print_expression(c);  
+  print_expression(a, Expression::Direction::LeftToRight);  
+  print_expression(b, Expression::Direction::LeftToRight);  
+  print_expression(c, Expression::Direction::LeftToRight);  
 
   return 0;
 }
