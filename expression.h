@@ -178,24 +178,22 @@ protected:
   };
 
   virtual PTermEnumeratorBase beginImpl(Direction direction) const {
-    return PTermEnumeratorBase(
-        new SymbolEnumerator(
-          direction,
-          LeftToRight == direction
-            ? m_symbols.cbegin()
-            : m_symbols.cend()));
+    return createEnumerator(direction, LeftToRight);
   }
 
   virtual PTermEnumeratorBase endImpl(Direction direction) const {
-    return PTermEnumeratorBase(
-        new SymbolEnumerator(
-          direction,
-          LeftToRight == direction
-            ? m_symbols.cend()
-            : m_symbols.cbegin()));
+    return createEnumerator(direction, RightToLeft);
   }
 
 private:
+  PTermEnumeratorBase createEnumerator(Direction relative_direction, Direction absolute_direction) const {
+    return PTermEnumeratorBase(
+        new SymbolEnumerator(
+          relative_direction,
+          absolute_direction == relative_direction
+            ? m_symbols.cbegin()
+            : m_symbols.cend()));
+  }
   std::string m_symbols;
 };
 
