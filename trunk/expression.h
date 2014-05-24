@@ -6,30 +6,43 @@
 #include <algorithm>
 #include <initializer_list>
 #include <list>
-#include <memory>
 #include <numeric>
 #include <sstream>
 #include <string>
 
+#include <boost/intrusive_ptr.hpp>
+
 #include "directional_iterator.h"
-#include "refcount_ptr.h"
 
 class Expression;
 class Term;
 class TermEnumerator;
 class ExpressionNode;
 
-typedef refcount_ptr<Term const> PCTerm;
-typedef refcount_ptr<Expression const> PCExpression;
+typedef boost::intrusive_ptr<Term const> PCTerm;
+typedef boost::intrusive_ptr<Expression const> PCExpression;
 typedef std::list<PCExpression> ExpressionList;
+
+template<typename T>
+inline void intrusive_ptr_add_ref(T* p) {
+    ++p->m_refcount;
+}
+
+template<typename T>
+inline void intrusive_ptr_release(T* p) {
+    if(0 == --p->m_refcount)
+        delete p;
+}
 
 class Expression {
 protected:
   class TermEnumeratorBase;
-  typedef refcount_ptr<TermEnumeratorBase> PTermEnumeratorBase;
+  typedef boost::intrusive_ptr<TermEnumeratorBase> PTermEnumeratorBase;
 
   class TermEnumeratorBase {
   public:
+    typedef TermEnumeratorBase Base;
+
     virtual ~TermEnumeratorBase() {}
 
     virtual bool isEqualTo(const TermEnumeratorBase& x) const = 0;
@@ -43,9 +56,16 @@ protected:
     operator PCTerm() const { return current(); }
     Term const& operator*() const { return *current(); }
     PCTerm operator->() const { return current(); }
+
+  private:
+    template<typename T> friend void intrusive_ptr_add_ref(T* expr);
+    template<typename T> friend void intrusive_ptr_release(T* expr);
+    mutable long m_refcount;
   };
   
 public:
+  typedef Expression Base;
+
   class TermEnumerator : public TermEnumeratorBase {
   public:
     TermEnumerator(PTermEnumeratorBase delegee) : m_delegee(delegee) {}
@@ -72,6 +92,11 @@ public:
 protected:
   virtual PTermEnumeratorBase beginImpl(Direction direction) const = 0;
   virtual PTermEnumeratorBase endImpl(Direction direction) const = 0;
+
+private:
+    template<typename T> friend void intrusive_ptr_add_ref(T* expr);
+    template<typename T> friend void intrusive_ptr_release(T* expr);
+    mutable long m_refcount;
 };
 
 class ExpressionNode : public Expression {
@@ -114,7 +139,7 @@ protected:
 
 private:
   PTermEnumeratorBase createEnumerator(bool finished) const {
-    return new TermSelfEnumerator(PCTerm(this), finished);
+    return PTermEnumeratorBase(new TermSelfEnumerator(PCTerm(this), finished));
   }
 };
 
@@ -159,7 +184,7 @@ protected:
     virtual PCTerm current() const {
       if (m_symbol == nullptr)
       {
-        m_symbol = new Symbol(*m_position);
+        m_symbol = PCTerm(new Symbol(*m_position));
       }
 
       return m_symbol;
@@ -180,7 +205,7 @@ protected:
 
 private:
   PTermEnumeratorBase createEnumerator(Direction relative_direction, Direction absolute_direction) const {
-    return new SymbolEnumerator(const_bound(m_symbols, relative_direction, absolute_direction));
+    return PTermEnumeratorBase(new SymbolEnumerator(const_bound(m_symbols, relative_direction, absolute_direction)));
   }
 
   std::string m_symbols;
@@ -273,19 +298,21 @@ protected:
   virtual PTermEnumeratorBase beginImpl(Direction direction) const {
     assert(LeftToRight == direction || RightToLeft == direction);
     ExpressionList::const_iterator const bounds[] = { m_components.cbegin(), m_components.cend() };
-    return new ConcatenationTermEnumerator(
+    return PTermEnumeratorBase(
+        new ConcatenationTermEnumerator(
           direction,
           expression_list_directional_iterator(direction, bounds[direction]),
-          expression_list_directional_iterator(direction, bounds[1 - direction]));
+          expression_list_directional_iterator(direction, bounds[1 - direction])));
   }
 
   virtual PTermEnumeratorBase endImpl(Direction direction) const {
     auto end = LeftToRight == direction ? m_components.cend() : m_components.cbegin();
     auto directional_end = expression_list_directional_iterator(direction, end);
-    return new ConcatenationTermEnumerator(
+    return PTermEnumeratorBase(
+        new ConcatenationTermEnumerator(
           direction,
           directional_end,
-          directional_end);
+          directional_end));
   }
 
 private:
@@ -298,7 +325,7 @@ class SubExpression : public Expression {
 public:
 
 private:
-  refcount_ptr<Expression> m_target;
+  boost::intrusive_ptr<Expression> m_target;
 };
 
 #endif
