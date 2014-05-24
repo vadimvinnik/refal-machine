@@ -16,9 +16,12 @@ int main() {
   auto b = PCExpression(new Symbol('w'));
   auto c = PCExpression(new Concatenation({a, b, a, b, a, b}));
 
-  print_expression(a, Direction::LeftToRight);  
-  print_expression(b, Direction::LeftToRight);  
-  print_expression(c, Direction::LeftToRight);  
+  print_expression(a, LeftToRight);  
+  print_expression(a, RightToLeft);  
+  print_expression(b, LeftToRight);  
+  print_expression(b, RightToLeft);  
+  print_expression(c, LeftToRight);  
+  print_expression(c, RightToLeft);  
 
   return 0;
 }
