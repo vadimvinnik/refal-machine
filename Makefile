@@ -6,7 +6,6 @@ EXECUTABLE = expression_test
 
 SOURCES = \
 	expression_test.cpp \
-	refcount_ptr.cpp \
 
 DEPENDENCIES = $(SOURCES:.cpp=.d)
 OBJECTS = $(SOURCES:.cpp=.o)
