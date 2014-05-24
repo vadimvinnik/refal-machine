@@ -41,6 +41,7 @@ protected:
 
     virtual PCTerm current() const = 0;
     operator PCTerm() const { return current(); }
+    Term const& operator*() const { return *current(); }
     PCTerm operator->() const { return current(); }
   };
   
@@ -113,7 +114,7 @@ protected:
 
 private:
   PTermEnumeratorBase createEnumerator(bool finished) const {
-    return PTermEnumeratorBase(new TermSelfEnumerator(PCTerm(this), finished));
+    return new TermSelfEnumerator(PCTerm(this), finished);
   }
 };
 
@@ -152,13 +153,20 @@ protected:
 
     virtual void toNext() {
       ++m_position;
+      m_symbol = nullptr;
     }
 
     virtual PCTerm current() const {
-      return PCTerm(new Symbol(*m_position));
+      if (m_symbol == nullptr)
+      {
+        m_symbol = new Symbol(*m_position);
+      }
+
+      return m_symbol;
     }
 
   private:
+    mutable PCTerm m_symbol;
     string_directional_iterator m_position;
   };
 
@@ -172,9 +180,7 @@ protected:
 
 private:
   PTermEnumeratorBase createEnumerator(Direction relative_direction, Direction absolute_direction) const {
-    return PTermEnumeratorBase(
-        new SymbolEnumerator(
-          const_bound(m_symbols, relative_direction, absolute_direction)));
+    return new SymbolEnumerator(const_bound(m_symbols, relative_direction, absolute_direction));
   }
 
   std::string m_symbols;
@@ -267,21 +273,19 @@ protected:
   virtual PTermEnumeratorBase beginImpl(Direction direction) const {
     assert(LeftToRight == direction || RightToLeft == direction);
     ExpressionList::const_iterator const bounds[] = { m_components.cbegin(), m_components.cend() };
-    return PTermEnumeratorBase(
-        new ConcatenationTermEnumerator(
+    return new ConcatenationTermEnumerator(
           direction,
           expression_list_directional_iterator(direction, bounds[direction]),
-          expression_list_directional_iterator(direction, bounds[1 - direction])));
+          expression_list_directional_iterator(direction, bounds[1 - direction]));
   }
 
   virtual PTermEnumeratorBase endImpl(Direction direction) const {
     auto end = LeftToRight == direction ? m_components.cend() : m_components.cbegin();
     auto directional_end = expression_list_directional_iterator(direction, end);
-    return PTermEnumeratorBase(
-        new ConcatenationTermEnumerator(
+    return new ConcatenationTermEnumerator(
           direction,
           directional_end,
-          directional_end));
+          directional_end);
   }
 
 private:
