@@ -19,7 +19,8 @@ static inline Direction reverse_direction(Direction direction) {
 }
 
 template <typename TIterator>
-class directional_iterator {
+class directional_iterator :
+  public std::iterator<std::input_iterator_tag, typename TIterator::value_type> {
 public:
   directional_iterator(Direction direction, TIterator iterator) :
     m_direction(direction),
@@ -31,15 +32,15 @@ public:
 
   directional_iterator& operator++() { move(LeftToRight); return *this; }
   directional_iterator& operator--() { move(RightToLeft); return *this; }
-  typename TIterator::value_type& operator*() { return *current(); }
-  typename TIterator::value_type const& operator*() const { return *current(); }
+  typename TIterator::reference operator*() { return *current(); }
+  typename TIterator::reference const& operator*() const { return *current(); }
 
 private:
   bool isEqualTo(directional_iterator const& x) const {
     return m_direction == x.m_direction && m_iterator == x.m_iterator;
   }
 
-  TIterator const current() const {
+  TIterator current() const {
     if (LeftToRight == m_direction)
       return m_iterator;
     else {

@@ -206,12 +206,14 @@ public:
   }
 
 protected:
+  typedef directional_iterator<ExpressionList::const_iterator> expression_list_directional_iterator;
+
   class ConcatenationTermEnumerator : public TermEnumeratorBase {
   public:
     ConcatenationTermEnumerator(
       Direction direction,
-      ExpressionList::const_iterator const& current_component,
-      ExpressionList::const_iterator const& components_end
+      expression_list_directional_iterator const& current_component,
+      expression_list_directional_iterator const& components_end
     ) :
       m_direction(direction),
       m_current_component(current_component), 
@@ -233,9 +235,9 @@ protected:
 
     virtual void toNext() {
       assert(!isAtEnd());
-      ++m_current_term; // todo
+      ++m_current_term;
       if (m_current_term == (*m_current_component)->end(m_direction)) {
-        ++m_current_component; // todo
+        ++m_current_component;
         findNextTerm();
       }
     }
@@ -257,8 +259,8 @@ protected:
     }
 
     Direction m_direction;
-    ExpressionList::const_iterator m_current_component;
-    ExpressionList::const_iterator m_components_end;
+    expression_list_directional_iterator m_current_component;
+    expression_list_directional_iterator m_components_end;
     TermEnumerator m_current_term;
   };
 
@@ -268,13 +270,18 @@ protected:
     return PTermEnumeratorBase(
         new ConcatenationTermEnumerator(
           direction,
-          bounds[direction],
-          bounds[1 - direction]));
+          expression_list_directional_iterator(direction, bounds[direction]),
+          expression_list_directional_iterator(direction, bounds[1 - direction])));
   }
 
   virtual PTermEnumeratorBase endImpl(Direction direction) const {
     auto end = LeftToRight == direction ? m_components.cend() : m_components.cbegin();
-    return PTermEnumeratorBase(new ConcatenationTermEnumerator(direction, end, end));
+    auto directional_end = expression_list_directional_iterator(direction, end);
+    return PTermEnumeratorBase(
+        new ConcatenationTermEnumerator(
+          direction,
+          directional_end,
+          directional_end));
   }
 
 private:
