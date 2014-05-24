@@ -19,7 +19,7 @@ public:
       delete m_p_target;
   }
 
-  refcount_ptr& operator= (const refcount_ptr& x) noexcept { clone_from(x); return *this; }
+  refcount_ptr& operator=(const refcount_ptr& x) noexcept { clone_from(x); return *this; }
   template <class U> refcount_ptr& operator= (const refcount_ptr<U>& x) noexcept { clone_from(x); }
 
   refcount_ptr& operator= (refcount_ptr&& x) noexcept { move_from(x); return *this; }
@@ -28,6 +28,7 @@ public:
   T& operator*() const noexcept { return *m_p_target; }
   T* operator->() const noexcept { return m_p_target; }
 
+  bool operator==(nullptr_t) const noexcept { return nullptr == m_p_target; }
   template <class U> bool operator== (const refcount_ptr<U>& rhs) const noexcept { return isEqualTo(rhs); }
 
   template <class U> bool operator!= (const refcount_ptr<U>& rhs) const noexcept { return !isEqualTo(rhs); }
