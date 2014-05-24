@@ -135,6 +135,20 @@ private:
 class Parenthesized : public Term {
 };
 
+template <typename T>
+static void moveIterator(T iterator, Expression::Direction direction) {
+  switch (direction) {
+    case Expression::LeftToRight:
+      ++iterator;
+      break;
+    case Expression::RightToLeft:
+      --iterator;
+      break;
+    default:
+      assert(false);
+  }
+}
+
 class Literal : public ExpressionNode {
 public:
   Literal(std::string symbols) : m_symbols(symbols) {}
@@ -156,16 +170,7 @@ protected:
     }
 
     virtual void toNext() {
-      switch (m_direction) {
-        case LeftToRight:
-          ++m_position;
-          break;
-        case RightToLeft:
-          --m_position;
-          break;
-        default:
-          assert(false);
-      }
+      moveIterator(m_position, m_direction);
     }
 
     virtual PCTerm current() const {
@@ -194,6 +199,7 @@ private:
             ? m_symbols.cbegin()
             : m_symbols.cend()));
   }
+
   std::string m_symbols;
 };
 
