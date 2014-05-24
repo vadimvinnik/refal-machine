@@ -136,7 +136,7 @@ class Parenthesized : public Term {
 };
 
 template <typename T>
-static void moveIterator(T iterator, Expression::Direction direction) {
+static void moveIterator(T &iterator, Expression::Direction direction) {
   switch (direction) {
     case Expression::LeftToRight:
       ++iterator;
