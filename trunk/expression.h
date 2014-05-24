@@ -1,3 +1,6 @@
+#ifndef _REFAL_MACHINE_EXPRESSION_H_
+#define _REFAL_MACHINE_EXPRESSION_H_
+
 #include <assert.h>
 
 #include <algorithm>
@@ -8,6 +11,7 @@
 #include <sstream>
 #include <string>
 
+#include "directional_iterator.h"
 #include "refcount_ptr.h"
 
 class Expression;
@@ -20,16 +24,6 @@ typedef refcount_ptr<Expression const> PCExpression;
 typedef std::list<PCExpression> ExpressionList;
 
 class Expression {
-public:
-  enum Direction {
-    LeftToRight,
-    RightToLeft
-  };
-
-static inline Direction reverse_direction(Direction direction) {
-  return static_cast<Direction>(1 - direction);
-}
-
 protected:
   class TermEnumeratorBase;
   typedef refcount_ptr<TermEnumeratorBase> PTermEnumeratorBase;
@@ -135,20 +129,6 @@ private:
 class Parenthesized : public Term {
 };
 
-template <typename T>
-static void moveIterator(T &iterator, Expression::Direction direction) {
-  switch (direction) {
-    case Expression::LeftToRight:
-      ++iterator;
-      break;
-    case Expression::RightToLeft:
-      --iterator;
-      break;
-    default:
-      assert(false);
-  }
-}
-
 class Literal : public ExpressionNode {
 public:
   Literal(std::string symbols) : m_symbols(symbols) {}
@@ -157,10 +137,11 @@ public:
   virtual int termsCount() const { return m_symbols.length(); }
 
 protected:
+  typedef directional_iterator<std::string::const_iterator> string_directional_iterator;
+
   class SymbolEnumerator : public ExpressionNode::TermEnumeratorBase {
   public:
-    SymbolEnumerator(Direction direction, std::string::const_iterator position) :
-      m_direction(direction),
+    SymbolEnumerator(string_directional_iterator const& position) :
       m_position(position)
     {}
 
@@ -170,16 +151,15 @@ protected:
     }
 
     virtual void toNext() {
-      moveIterator(m_position, m_direction);
+      ++m_position;
     }
 
     virtual PCTerm current() const {
-      return PCTerm(new Symbol(*(LeftToRight == m_direction ? m_position : m_position + 1)));
+      return PCTerm(new Symbol(*m_position));
     }
 
   private:
-    Direction m_direction;
-    std::string::const_iterator m_position;
+    string_directional_iterator m_position;
   };
 
   virtual PTermEnumeratorBase beginImpl(Direction direction) const {
@@ -194,10 +174,7 @@ private:
   PTermEnumeratorBase createEnumerator(Direction relative_direction, Direction absolute_direction) const {
     return PTermEnumeratorBase(
         new SymbolEnumerator(
-          relative_direction,
-          absolute_direction == relative_direction
-            ? m_symbols.cbegin()
-            : m_symbols.cend()));
+          const_bound(m_symbols, relative_direction, absolute_direction)));
   }
 
   std::string m_symbols;
@@ -209,7 +186,10 @@ public:
 
   virtual std::string toString() const {
     std::ostringstream s;
-    std::for_each(m_components.cbegin(), m_components.cend(), [&s](PCExpression const& pe) { s << pe->toString(); });
+    std::for_each(
+        m_components.cbegin(),
+        m_components.cend(),
+        [&s](PCExpression const& pe) { s << pe->toString(); });
     return s.str();
   }
 
@@ -309,4 +289,6 @@ public:
 private:
   refcount_ptr<Expression> m_target;
 };
+
+#endif
 
