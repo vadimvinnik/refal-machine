@@ -168,6 +168,13 @@ private:
 };
 
 class Parenthesized : public Term {
+public:
+  Parenthesized(PCExpression inner) : m_inner(inner) {}
+  virtual std::string toString() const { return "(" + m_inner->toString() + ")"; }
+  PCExpression inner() const { return m_inner; }
+
+private:
+  PCExpression m_inner;
 };
 
 // Although a plain expression is iconceptually a concatenation of symbols,

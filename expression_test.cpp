@@ -11,8 +11,9 @@ void print_expression(PCExpression const& e, LookupDirection direction) {
 int main() {
   auto a = PCExpression(new Literal("abcdefg"));
   auto b = PCExpression(new Symbol('w'));
-  auto c = PCExpression(new Concatenation({a, b, a, b, a, b}));
-  auto d = PCExpression(new Concatenation({a, b, c, a, b, c}));
+  auto c = PCExpression(new Parenthesized(a));
+  auto d = PCExpression(new Concatenation({a, b, a, b, a, b}));
+  auto e = PCExpression(new Concatenation({a, b, c, a, b, c}));
 
   print_expression(a, LeftToRight);  
   print_expression(a, RightToLeft);  
@@ -22,6 +23,8 @@ int main() {
   print_expression(c, RightToLeft);  
   print_expression(d, LeftToRight);  
   print_expression(d, RightToLeft);  
+  print_expression(e, LeftToRight);  
+  print_expression(e, RightToLeft);  
 
   return 0;
 }
