@@ -3,7 +3,7 @@
 
 using namespace std;
 
-void print_expression(PCExpression const& e, Direction direction) {
+void print_expression(PCExpression const& e, LookupDirection direction) {
   for_each(e->begin(direction), e->end(direction), [](Term const& t) { cerr << t.toString(); });
   cerr << endl;
 }

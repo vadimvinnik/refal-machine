@@ -96,12 +96,12 @@ public:
   virtual std::string toString() const = 0;
   virtual bool isEmpty() const { return 0 == termsCount(); }
   virtual int termsCount() const = 0;
-  virtual TermEnumerator begin(Direction direction) const { return TermEnumerator(beginImpl(direction)); }
-  virtual TermEnumerator end(Direction direction) const { return TermEnumerator(endImpl(direction)); }
+  virtual TermEnumerator begin(LookupDirection direction) const { return TermEnumerator(beginImpl(direction)); }
+  virtual TermEnumerator end(LookupDirection direction) const { return TermEnumerator(endImpl(direction)); }
 
 protected:
-  virtual PTermEnumeratorWorkerBase beginImpl(Direction direction) const = 0;
-  virtual PTermEnumeratorWorkerBase endImpl(Direction direction) const = 0;
+  virtual PTermEnumeratorWorkerBase beginImpl(LookupDirection direction) const = 0;
+  virtual PTermEnumeratorWorkerBase endImpl(LookupDirection direction) const = 0;
 
 private:
   template<typename T> friend void intrusive_ptr_add_ref(T* expr);
@@ -149,8 +149,8 @@ protected:
     bool m_finished;
   };
 
-  virtual PTermEnumeratorWorkerBase beginImpl(Direction direction) const { return createEnumerator(false); }
-  virtual PTermEnumeratorWorkerBase endImpl(Direction direction) const { return createEnumerator(true); }
+  virtual PTermEnumeratorWorkerBase beginImpl(LookupDirection direction) const { return createEnumerator(false); }
+  virtual PTermEnumeratorWorkerBase endImpl(LookupDirection direction) const { return createEnumerator(true); }
 
 private:
   PTermEnumeratorWorkerBase createEnumerator(bool finished) const {
@@ -218,17 +218,20 @@ protected:
     string_directional_iterator m_position;
   };
 
-  virtual PTermEnumeratorWorkerBase beginImpl(Direction direction) const {
-    return createEnumerator(direction, LeftToRight);
+  virtual PTermEnumeratorWorkerBase beginImpl(LookupDirection direction) const {
+    return createEnumerator(Begin, direction);
   }
 
-  virtual PTermEnumeratorWorkerBase endImpl(Direction direction) const {
-    return createEnumerator(direction, RightToLeft);
+  virtual PTermEnumeratorWorkerBase endImpl(LookupDirection direction) const {
+    return createEnumerator(End, direction);
   }
 
 private:
-  PTermEnumeratorWorkerBase createEnumerator(Direction relative_direction, Direction absolute_direction) const {
-    return PTermEnumeratorWorkerBase(new SymbolEnumerator(const_bound(m_symbols, relative_direction, absolute_direction)));
+  PTermEnumeratorWorkerBase createEnumerator(ContainerBound bound, LookupDirection direction) const {
+    return PTermEnumeratorWorkerBase(
+        new SymbolEnumerator(
+          relative_container_bound<std::string, std::string::const_iterator>
+            (m_symbols, bound, direction)));
   }
 
   std::string m_symbols;
@@ -265,7 +268,7 @@ protected:
   class ConcatenationTermEnumerator : public TermEnumeratorWorkerBase {
   public:
     ConcatenationTermEnumerator(
-      Direction direction,
+      LookupDirection direction,
       expression_list_directional_iterator const& current_component,
       expression_list_directional_iterator const& components_end
     ) :
@@ -312,13 +315,13 @@ protected:
       }
     }
 
-    Direction m_direction;
+    LookupDirection m_direction;
     expression_list_directional_iterator m_current_component;
     expression_list_directional_iterator m_components_end;
     TermEnumerator m_current_term;
   };
 
-  virtual PTermEnumeratorWorkerBase beginImpl(Direction direction) const {
+  virtual PTermEnumeratorWorkerBase beginImpl(LookupDirection direction) const {
     assert(LeftToRight == direction || RightToLeft == direction);
     ExpressionList::const_iterator const bounds[] = { m_components.cbegin(), m_components.cend() };
     return PTermEnumeratorWorkerBase(
@@ -328,7 +331,7 @@ protected:
           expression_list_directional_iterator(direction, bounds[1 - direction])));
   }
 
-  virtual PTermEnumeratorWorkerBase endImpl(Direction direction) const {
+  virtual PTermEnumeratorWorkerBase endImpl(LookupDirection direction) const {
     auto end = LeftToRight == direction ? m_components.cend() : m_components.cbegin();
     auto directional_end = expression_list_directional_iterator(direction, end);
     return PTermEnumeratorWorkerBase(
