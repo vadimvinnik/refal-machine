@@ -1,8 +1,10 @@
 #ifndef _REFAL_MACHINE_EXPRESSION_H_
 #define _REFAL_MACHINE_EXPRESSION_H_
 
+// C std
 #include <assert.h>
 
+// C++ std
 #include <algorithm>
 #include <initializer_list>
 #include <list>
@@ -10,19 +12,22 @@
 #include <sstream>
 #include <string>
 
+// 3rd party
 #include <boost/intrusive_ptr.hpp>
 
+// this project
 #include "directional_iterator.h"
 
 class Expression;
 class Term;
 class TermEnumerator;
-class ExpressionNode;
+class ConcatenationNode;
 
 typedef boost::intrusive_ptr<Term const> PCTerm;
 typedef boost::intrusive_ptr<Expression const> PCExpression;
 typedef std::list<PCExpression> ExpressionList;
 
+// to support boost::intrusive_ptr
 template<typename T>
 inline void intrusive_ptr_add_ref(T* p) {
     ++p->m_refcount;
@@ -34,15 +39,11 @@ inline void intrusive_ptr_release(T* p) {
         delete p;
 }
 
+
 class Expression {
 protected:
-  class TermEnumeratorBase;
-  typedef boost::intrusive_ptr<TermEnumeratorBase> PTermEnumeratorBase;
-
   class TermEnumeratorBase {
   public:
-    typedef TermEnumeratorBase Base;
-
     virtual ~TermEnumeratorBase() {}
 
     virtual bool isEqualTo(const TermEnumeratorBase& x) const = 0;
@@ -62,13 +63,22 @@ protected:
     template<typename T> friend void intrusive_ptr_release(T* expr);
     mutable long m_refcount;
   };
+
+  typedef boost::intrusive_ptr<TermEnumeratorBase> PTermEnumeratorBase;
+
+  // restrict enumerators that can be wrapped into TermEnumerator
+  // to avoid multiple levels of indirection
+  class TermEnumeratorWorkerBase : public TermEnumeratorBase {};
+  typedef boost::intrusive_ptr<TermEnumeratorWorkerBase> PTermEnumeratorWorkerBase;
   
 public:
-  typedef Expression Base;
-
+  /* this wrapper of a real worker object is needed because
+   * begin() and end() must return objects, not (smart) pointers,
+   * but term enumerators are polymorphic, and their base class
+   * is abstract */
   class TermEnumerator : public TermEnumeratorBase {
   public:
-    TermEnumerator(PTermEnumeratorBase delegee) : m_delegee(delegee) {}
+    TermEnumerator(PTermEnumeratorWorkerBase delegee) : m_delegee(delegee) {}
 
     virtual bool isEqualTo(const TermEnumeratorBase& x) const {
       auto xAsTermEnumerator = dynamic_cast<TermEnumerator const*>(&x);
@@ -79,7 +89,7 @@ public:
     virtual PCTerm current() const { return m_delegee->current(); }
 
   private:
-    PTermEnumeratorBase m_delegee;
+    PTermEnumeratorWorkerBase m_delegee;
   };
 
   virtual ~Expression() {}
@@ -90,27 +100,32 @@ public:
   virtual TermEnumerator end(Direction direction) const { return TermEnumerator(endImpl(direction)); }
 
 protected:
-  virtual PTermEnumeratorBase beginImpl(Direction direction) const = 0;
-  virtual PTermEnumeratorBase endImpl(Direction direction) const = 0;
+  virtual PTermEnumeratorWorkerBase beginImpl(Direction direction) const = 0;
+  virtual PTermEnumeratorWorkerBase endImpl(Direction direction) const = 0;
 
 private:
-    template<typename T> friend void intrusive_ptr_add_ref(T* expr);
-    template<typename T> friend void intrusive_ptr_release(T* expr);
-    mutable long m_refcount;
+  template<typename T> friend void intrusive_ptr_add_ref(T* expr);
+  template<typename T> friend void intrusive_ptr_release(T* expr);
+
+  mutable long m_refcount;
 };
 
-class ExpressionNode : public Expression {
-public:
-  virtual int termsCount() const = 0;
+// A base class for all entities allowed to be used in concatenation.
+// Restricting concatenation avoids growing of expression trees.
+class ConcatenationNode : public Expression {
 };
 
-class Term : public ExpressionNode {
+// A term is either a single symbol or any expression in parentheses.
+// Obviously, a term considered as an expression contains just one
+// term, namely itself.
+class Term : public ConcatenationNode {
 public:
   virtual bool isEmpty() const { return false; }
   virtual int termsCount() const { return 1; }
 
 protected:
-  class TermSelfEnumerator : public Expression::TermEnumeratorBase {
+  // Enumerates an imaginary collection containing exactly one item
+  class TermSelfEnumerator : public Expression::TermEnumeratorWorkerBase {
   public:
     TermSelfEnumerator(PCTerm target, bool finished) : m_target(target), m_finished(finished) {}
 
@@ -134,12 +149,12 @@ protected:
     bool m_finished;
   };
 
-  virtual PTermEnumeratorBase beginImpl(Direction direction) const { return createEnumerator(false); }
-  virtual PTermEnumeratorBase endImpl(Direction direction) const { return createEnumerator(true); }
+  virtual PTermEnumeratorWorkerBase beginImpl(Direction direction) const { return createEnumerator(false); }
+  virtual PTermEnumeratorWorkerBase endImpl(Direction direction) const { return createEnumerator(true); }
 
 private:
-  PTermEnumeratorBase createEnumerator(bool finished) const {
-    return PTermEnumeratorBase(new TermSelfEnumerator(PCTerm(this), finished));
+  PTermEnumeratorWorkerBase createEnumerator(bool finished) const {
+    return PTermEnumeratorWorkerBase(new TermSelfEnumerator(PCTerm(this), finished));
   }
 };
 
@@ -155,7 +170,11 @@ private:
 class Parenthesized : public Term {
 };
 
-class Literal : public ExpressionNode {
+// Although a plain expression is iconceptually a concatenation of symbols,
+// and there is no special treatment of strings, this class is needed to
+// optimize memory usage: it avoids storing each symbol as a separate
+// object of Symbol class.
+class Literal : public ConcatenationNode {
 public:
   Literal(std::string symbols) : m_symbols(symbols) {}
   virtual std::string toString() const { return m_symbols; }
@@ -165,7 +184,7 @@ public:
 protected:
   typedef directional_iterator<std::string::const_iterator> string_directional_iterator;
 
-  class SymbolEnumerator : public ExpressionNode::TermEnumeratorBase {
+  class SymbolEnumerator : public ConcatenationNode::TermEnumeratorWorkerBase {
   public:
     SymbolEnumerator(string_directional_iterator const& position) :
       m_position(position)
@@ -191,21 +210,25 @@ protected:
     }
 
   private:
+    // since a symbol is not a standalone object but just a character
+    // in a string, and since it has to look and behave like any other
+    // Term object, let each SymbolEnumerator create its own Symbol
+    // object and refer to it.
     mutable PCTerm m_symbol;
     string_directional_iterator m_position;
   };
 
-  virtual PTermEnumeratorBase beginImpl(Direction direction) const {
+  virtual PTermEnumeratorWorkerBase beginImpl(Direction direction) const {
     return createEnumerator(direction, LeftToRight);
   }
 
-  virtual PTermEnumeratorBase endImpl(Direction direction) const {
+  virtual PTermEnumeratorWorkerBase endImpl(Direction direction) const {
     return createEnumerator(direction, RightToLeft);
   }
 
 private:
-  PTermEnumeratorBase createEnumerator(Direction relative_direction, Direction absolute_direction) const {
-    return PTermEnumeratorBase(new SymbolEnumerator(const_bound(m_symbols, relative_direction, absolute_direction)));
+  PTermEnumeratorWorkerBase createEnumerator(Direction relative_direction, Direction absolute_direction) const {
+    return PTermEnumeratorWorkerBase(new SymbolEnumerator(const_bound(m_symbols, relative_direction, absolute_direction)));
   }
 
   std::string m_symbols;
@@ -239,7 +262,7 @@ public:
 protected:
   typedef directional_iterator<ExpressionList::const_iterator> expression_list_directional_iterator;
 
-  class ConcatenationTermEnumerator : public TermEnumeratorBase {
+  class ConcatenationTermEnumerator : public TermEnumeratorWorkerBase {
   public:
     ConcatenationTermEnumerator(
       Direction direction,
@@ -295,20 +318,20 @@ protected:
     TermEnumerator m_current_term;
   };
 
-  virtual PTermEnumeratorBase beginImpl(Direction direction) const {
+  virtual PTermEnumeratorWorkerBase beginImpl(Direction direction) const {
     assert(LeftToRight == direction || RightToLeft == direction);
     ExpressionList::const_iterator const bounds[] = { m_components.cbegin(), m_components.cend() };
-    return PTermEnumeratorBase(
+    return PTermEnumeratorWorkerBase(
         new ConcatenationTermEnumerator(
           direction,
           expression_list_directional_iterator(direction, bounds[direction]),
           expression_list_directional_iterator(direction, bounds[1 - direction])));
   }
 
-  virtual PTermEnumeratorBase endImpl(Direction direction) const {
+  virtual PTermEnumeratorWorkerBase endImpl(Direction direction) const {
     auto end = LeftToRight == direction ? m_components.cend() : m_components.cbegin();
     auto directional_end = expression_list_directional_iterator(direction, end);
-    return PTermEnumeratorBase(
+    return PTermEnumeratorWorkerBase(
         new ConcatenationTermEnumerator(
           direction,
           directional_end,
