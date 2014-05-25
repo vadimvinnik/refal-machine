@@ -9,20 +9,31 @@ To use normal and reverse iteration modes interchangeably, determining
 the mode at run time, a wrapper is needed.
 */
 
-enum Direction {
+enum ContainerBound {
+  Begin,
+  End
+};
+
+enum LookupDirection {
   LeftToRight,
   RightToLeft
 };
 
-static inline Direction reverse_direction(Direction direction) {
-  return static_cast<Direction>(1 - direction);
+static inline LookupDirection reverse_direction(LookupDirection direction) {
+  return static_cast<LookupDirection>(1 - direction);
+}
+
+// Begin of a container looked up in a reverse order is end of the
+// initial container etc.
+static inline ContainerBound relative_bound(ContainerBound bound, LookupDirection direction) {
+  return static_cast<ContainerBound>(bound ^ direction);
 }
 
 template <typename TIterator>
 class directional_iterator :
   public std::iterator<std::input_iterator_tag, typename TIterator::value_type> {
 public:
-  directional_iterator(Direction direction, TIterator iterator) :
+  directional_iterator(LookupDirection direction, TIterator iterator) :
     m_direction(direction),
     m_iterator(iterator)
   {}
@@ -50,7 +61,7 @@ private:
     }
   }
 
-  void move(Direction relative_direction) {
+  void move(LookupDirection relative_direction) {
     assert(LeftToRight == relative_direction || RightToLeft == relative_direction);
     if (relative_direction == m_direction)
       ++m_iterator;
@@ -59,35 +70,21 @@ private:
   }
 
 
-  Direction m_direction;
+  LookupDirection m_direction;
   TIterator m_iterator;
 };
 
-template <typename TContainer>
-directional_iterator<typename TContainer::iterator> bound(
+template <typename TContainer, typename TIterator>
+directional_iterator<TIterator> relative_container_bound(
     TContainer const& container,
-    Direction relative_direction,
-    Direction absolute_direction)
+    ContainerBound bound,
+    LookupDirection direction)
 {
-  return directional_iterator<typename TContainer::iterator>(
-      relative_direction,
-      absolute_direction == relative_direction
+  return directional_iterator<TIterator>(
+      direction,
+      Begin == relative_bound(bound, direction)
         ? container.begin()
         : container.end());
 }
 
-template <typename TContainer>
-directional_iterator<typename TContainer::const_iterator> const_bound(
-    TContainer const& container,
-    Direction relative_direction,
-    Direction absolute_direction)
-{
-  return directional_iterator<typename TContainer::const_iterator>(
-      relative_direction,
-      absolute_direction == relative_direction
-        ? container.cbegin()
-        : container.cend());
-}
-
 #endif
-
